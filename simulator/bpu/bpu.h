@@ -28,49 +28,56 @@ class BaseBP
 public:
     virtual bool is_taken( Addr PC) = 0;
     virtual Addr get_target( Addr PC) = 0;
-    virtual void update( bool is_taken,
-                         Addr branch_ip,
-                         Addr target) = 0;
+    virtual void update( bool is_taken, Addr branch_ip, Addr target) = 0;
 
+    BaseBP() = default;
     virtual ~BaseBP() = default;
+    BaseBP( const BaseBP&) = default;
+    BaseBP( BaseBP&&) = default;
+    BaseBP& operator=( const BaseBP&) = default;
+    BaseBP& operator=( BaseBP&&) = default;
 };
 
+
 template<typename T>
-class BP : public BaseBP
+class BP final: public BaseBP
 {
     std::vector<std::vector<T>> data;
     CacheTagArray tags;
 
 public:
-    BP( uint32   size_in_entries,
-        uint32   ways,
+    BP( uint32 size_in_entries,
+        uint32 ways,
         uint32 branch_ip_size_in_bits) :
 
         data( ways, std::vector<T>( size_in_entries / ways)),
         tags( size_in_entries,
               ways,
-              4,
+              // we're reusing existing CacheTagArray functionality,
+              // but here we don't split memory in blocks, storing
+              // IP's only, so hardcoding here the granularity of 4 bytes:
+              4, 
               branch_ip_size_in_bits)
         { }
 
     /* prediction */
     bool is_taken( Addr PC) final
     {
-        uint32 way;
-        bool is_hit;
-        std::tie( is_hit, way) = tags.read_no_touch( PC);
-        if ( is_hit) // hit
-            return data[ way][ tags.set(PC)].is_taken( PC);
+        // do not update LRU information on prediction,
+        // so "no_touch" version of "tags.read" is used:
+        const auto[ is_hit, way] = tags.read_no_touch( PC);
 
-        return false;
+        return is_hit && data[ way][ tags.set(PC)].is_taken( PC);
     }
 
     Addr get_target( Addr PC) final
     {
-        uint32 way;
-        bool is_hit;
-        std::tie( is_hit, way) = tags.read_no_touch( PC);
-        if ( is_hit) // hit
+        // do not update LRU information on prediction,
+        // so "no_touch" version of "tags.read" is used:
+        const auto[ is_hit, way] = tags.read_no_touch( PC);
+
+        // return saved target only in case it is predicted taken
+        if ( is_hit && is_taken( PC))
             return data[ way][ tags.set(PC)].getTarget();
 
         return PC + 4;
@@ -81,13 +88,14 @@ public:
                  Addr branch_ip,
                  Addr target) final
     {
-        uint32 set = tags.set( branch_ip);
-        uint32 way;
-        bool is_hit;
-        std::tie( is_hit, way) = tags.read( branch_ip);
+        const auto set = tags.set( branch_ip);
+        auto[ is_hit, way] = tags.read( branch_ip);
+
         if ( !is_hit) { // miss
             way = tags.write( branch_ip); // add new entry to cache
-            data[ way][ set].reset();
+            auto& entry = data[ way][ set];
+            entry.reset();
+            entry.update_target( target);
         }
 
         data[ way][ set].update( is_taken, target);
@@ -106,7 +114,12 @@ class BPFactory {
         virtual std::unique_ptr<BaseBP> create(uint32 size_in_entries,
                                                uint32 ways,
                                                uint32 branch_ip_size_in_bits) const = 0;
+        BaseBPCreator() = default;
         virtual ~BaseBPCreator() = default;
+        BaseBPCreator( const BaseBPCreator&) = delete;
+        BaseBPCreator( BaseBPCreator&&) = delete;
+        BaseBPCreator& operator=( const BaseBPCreator&) = delete;
+        BaseBPCreator& operator=( BaseBPCreator&&) = delete;
     };
 
     template<typename T>
@@ -120,6 +133,7 @@ class BPFactory {
                                             ways,
                                             branch_ip_size_in_bits);
         }
+        BPCreator() = default;
     };
 
     const std::map<std::string, BaseBPCreator*> map;
@@ -133,10 +147,10 @@ public:
               { "adaptive_two_level",    new BPCreator<BPEntryAdaptive<2>>}})
     { }
 
-    std::unique_ptr<BaseBP> create( const std::string& name,
-                    uint32 size_in_entries,
-                    uint32 ways,
-                    uint32 branch_ip_size_in_bits = 32) const
+    auto create( const std::string& name,
+                 uint32 size_in_entries,
+                 uint32 ways,
+                 uint32 branch_ip_size_in_bits = 32) const
     {
         if ( map.find(name) == map.end())
         {
@@ -156,6 +170,11 @@ public:
         for ( auto& elem : map)
             delete elem.second;
     }
+    
+    BPFactory( const BPFactory&) = delete;
+    BPFactory( BPFactory&&) = delete;
+    BPFactory& operator=( const BPFactory&) = delete;
+    BPFactory& operator=( BPFactory&&) = delete;
 };
 
 #endif

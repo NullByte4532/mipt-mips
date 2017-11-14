@@ -8,7 +8,8 @@ del *.obj
 
 rem Build object files
 cl /I. /EHsc /c /nologo /MD ^
-    /D__LIBELF_INTERNAL__=1 ^
+   /D__LIBELF_INTERNAL__=1 ^
+   /D_HAS_AUTO_PTR_ETC=1 ^
    /W4 /WX /wd4505 /wd4244 /wd4996 /wd4267 ^
    /std:c++17 ^
    infra/elf_parser/elf_parser.cpp ^
@@ -17,6 +18,7 @@ cl /I. /EHsc /c /nologo /MD ^
    infra/ports/ports.cpp ^
    infra/cache/cache_tag_array.cpp ^
    mips/mips_instr.cpp ^
+   mips/mips_memory.cpp ^
    func_sim/func_sim.cpp ^
    core/perf_sim.cpp || exit /b
 
@@ -29,10 +31,14 @@ set TRUNK=%cd%
 set TRUNKX=%TRUNK:\=\\%
 
 rem Build and run all the tests
-for %%G in (infra\elf_parser infra\memory mips func_sim bpu core) do (
+for %%G in (infra\elf_parser infra\config infra\memory mips infra/instrcache func_sim bpu core) do (
     echo Testing %%G
     cd %%G\t
-    cl /nologo unit_test.cpp %TRUNK%\*.obj %TRUNK%\..\libelf\lib\libelf.lib  /EHsc /I %TRUNK%\..\googletest\googletest\include\ /I %TRUNK% /Fetest /DTEST_PATH=\"%TRUNKX%\\..\\traces\\tt.core.out\" /MD || exit /b
+    cl /nologo unit_test.cpp %TRUNK%\*.obj %TRUNK%\..\libelf\lib\libelf.lib ^
+       /EHsc /I %TRUNK%\..\googletest\googletest\include\ /I %TRUNK% /Fetest ^
+       /D_HAS_AUTO_PTR_ETC=1 ^
+       /std:c++17 ^
+       /DTEST_PATH=\"%TRUNKX%\\..\\traces\\tt.core.out\" /MD || exit /b
     .\test.exe || exit /b
     cd %TRUNK%
 )
@@ -40,6 +46,7 @@ for %%G in (infra\elf_parser infra\memory mips func_sim bpu core) do (
 rem Build main.cpp
 cl /I. /EHsc /c /nologo /MD ^
    /D__LIBELF_INTERNAL__=1 ^
+   /D_HAS_AUTO_PTR_ETC=1 ^
    /W4 /WX /wd4505 /wd4244 /wd4996 /wd4267 ^
    /std:c++17 ^
    main.cpp || exit /b
