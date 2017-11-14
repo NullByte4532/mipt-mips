@@ -161,11 +161,7 @@ class FuncInstr
 
         static const ISAEntry isaTable[];
         static string_view regTableName(RegNum reg);
-<<<<<<< HEAD
-        static std::array<std::string, REG_NUM_MAX> regTable;
-=======
         static std::array<string_view, REG_NUM_MAX> regTable;
->>>>>>> 293d858b8e97645339d710a2b6b64801bbe87df6
         string_view name = {};
 
         RegNum src1 = REG_NUM_ZERO;
